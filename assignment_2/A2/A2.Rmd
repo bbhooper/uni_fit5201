@@ -65,22 +65,22 @@ set.seed(1234)
 #read in data 
 data <- readLines("D:/UNI/data_science/fit5201/mywork/uni_fit5201/assignment_2/A2/q1/20ng-train-all-terms.txt")
 ## randomly selet some samples
-index <- length(data)
+index <- 1:length(data)
 text <- data
 
 ## the terms before '\t' are the lables (the newsgroup names) and all the remaining text after '\t' are the actual documents
 docs <- strsplit(text, '\t')
+
 rm(text)# just free some memory!
 
 # store the labels for evaluation
 labels <- unlist(lapply(docs, function(x) x[1]))
 # store the unlabeled texts
 docs <- data.frame(unlist(lapply(docs, function(x) x[2])))
-
 docs <- data.frame(doc_id = index,text = docs[,1])
 # convert to corpus
-docs <- DataframeSource(docs)
-docs <- Corpus(docs)
+docs1 <- DataframeSource(docs)
+docs1 <- Corpus(docs1)
 
 ```
 
@@ -93,18 +93,38 @@ clean_corpus <- function(corpus){
   corpus <- tm_map(corpus, stemDocument)
     return(corpus)
 }
-clean_corp <- clean_corpus(docs)
+clean_corp <- clean_corpus(docs1)
+```
+
+```{r}
+#turn into document term matrix
+dtm <- DocumentTermMatrix(clean_corp)
+
+#remove sparse terms 
+dtm <- removeSparseTerms(dtm, 0.90)
+
+#turn into a matrix for analysis 
+X <- as.matrix(dtm)
+rownames(X) <- 1:nrow(X)
 ```
 
 ```{r}
 #turn into term document matrix
-dtm <- DocumentTermMatrix(clean_corp)
-#remove sparse terms 
-dtm <- removeSparseTerms(dtm, 0.90)
-#turn into a matrix for analysis 
-# X <- as.matrix(dtm)
-```
+tdm <- TermDocumentMatrix(clean_corp)
 
+#remove sparse terms
+tdm <- removeSparseTerms(tdm, 0.90)
+
+#calculate the Tf_Idf 
+tfidf <- weightTfIdf(tdm)
+
+#convert into a matrix for analysis 
+X1 <- as.matrix(tfidf)
+rownames(X1) <- 1:nrow(X1)
+X1 <- t(X1)
+rownames(X1) <- 1:nrow(X1)
+X <- X1
+```
 For example, you can view your clustering results as a series of decisions, one for each of the $N(N-1)/2$ pairs of documents in the collection, where N is the sample number. A true positive (TP) decision assigns two similar documents to the same cluster, a true negative (TN) decision assigns two dissimilar documents to different clusters. There are two types of errors we can commit. A (FP) decision assigns two dissimilar documents to the same cluster. A (FN) decision assigns two similar documents to different clusters. The Rand index ( ) measures the percentage of decisions that are correct. That is, it is simply accuracy
 $$\mathrm{RI}=\frac{\mathrm{TP}+\mathrm{TN}}{\mathrm{TP}+\mathrm{FP}+\mathrm{FN}+\mathrm{TN}}$$
 
@@ -154,7 +174,7 @@ We use a subset of a publicly available dataset called 20 Newsgroups originally 
 set.seed(1235)
 N <- 2373
 K <- 4
-D <- 129
+D <- 128
 ```
 
 ```{r}
@@ -172,6 +192,12 @@ for (k in 1:K){
     Sigma[k,] <- genPositiveDefMat(D)$Sigma[1:D^2]
 }
 ```
+
+```{r}
+
+	
+```
+
 
 ```{r}
 #read in the data needed for analysis. 
@@ -199,16 +225,14 @@ c.GMM <- function(X, K, hardclustering = FALSE){
         Sigma.hat[k,] <- diag(D) # initialize with identity covariance matrix
 	}
 	Mu.hat.old <- Mu.hat # store old estimates 
-	
+	tiny <- 1e-99 # to combat NA issue when normalising post
 	if(hardclustering == "FALSE"){
-		tiny <- 1e-99 # to combat NA issue when normalising post
 		while(!terminate){
 			# E step: 
 			for(k in 1:K){
 				# Calculate posterier based on the estimated means, covariance and cluster size: 
 				post[, K] <- dmvnorm(X, Mu.hat[k,],  matrix(Sigma.hat[k,], ncol=D)) * Nk.hat[k]
 			}
-		  
 			post <- (post+ tiny)/rowSums(post + tiny) # normalization (to make sure post(k) is in [0,1] and sum(post)=1)
 			
 			#M step: 
@@ -271,35 +295,75 @@ c.GMM <- function(X, K, hardclustering = FALSE){
 	}
 	return(post)
 }
+
 ```
 
 ```{r}
-wcSoft <- c.GMM(X, K = 4, hardclustering = FALSE)
-
+wcSoft <- c.GMM(X, K = 4)
+tfidfSoft <- c.GMM(X1, K =4)
 
 ```
 
 *Implement a function that use true labels to evaluate your clustering performance. Please read below instructions for more details. [10 marks] *
 ```{r}
+mapping <- c("sci.crypt" = 1, "sci.electronics" = 2, "sci.med" = 3, "sci.space" = 4)
+labels <- mapping[labels]
+
+post.v <- melt(data = post, measure.vars = c("V1", "V2", "V3", "V4"))
+colnames(post.v) <- c("doc", "cluster", "value")
+post.v <- filter(post.v, value == 1)
+post.v[duplicated(post.v$doc),]
+post.v <- post.v[-c(2374), ]
+predictions <- post.v$cluster
+```
+
+```{r}
 # labels denote the true label of documents, predictions denote your clustering results
 evl <- function(labels, predictions){
-    # start your answer here ...
-    RI <- None
-    return (RI)
+    x <- abs(sapply(labels, function(x) x - labels))
+    x[x > 1] <- 1
+    y <- abs(sapply(predictions, function(x) x - predictions))
+    y[y > 1] <- 1
+    sg <- sum(abs(x - y))/2
+    bc <- choose(dim(x)[1], 2)
+    ri <- 1 - sg/bc
+    # RI <- None
+    # return (RI)
+    return(ri)
 }
 ```
 
 *Compare the clustering performances of using word count and TFIDF as features, and explain your results. [5 marks]*
 ```{r}
-tdm <- TermDocumentMatrix(clean_corp)
-tfidf <- weightTfIdf(tdm)
+wcRI <- evl(labels, predictions)
+wcRI
 
-
+tfidfRI <- evl(labels, predictions)
 ```
 
+```{r}
+post.v <- melt(data = post, measure.vars = c("V1", "V2", "V3", "V4"))
 
+colnames(post.v) <- c("doc", "cluster", "value")
 
+post.v <- filter(post.v, value == 1)
 
+predictions <- post.v$cluster
+
+post.v[duplicated(post.v$doc),]
+
+post.v <- post.v[-c(2374), ]
+```
+
+```{r}
+pcq <- prcomp(X, center = TRUE, scale. = TRUE)
+summary(pca1)
+```
+```{r}
+library(ggfortify)
+library(cluster)
+autoplot(clara(post, 4))
+```
 
 **Question 2 Neural Network [20 Marks]**
 In this question, you are required to construct a nueral network classifier with the H2O library. The MINST dataset is used in this question. In consideration of the computation cost, only a portion of the MINST dataset is used, with training (train.xlsx) and test sets (test.xlsx) containing 5000 records, respectively. 
