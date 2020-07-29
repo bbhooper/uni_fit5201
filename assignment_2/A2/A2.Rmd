@@ -1,0 +1,318 @@
+---
+title: "FIT5209 Assignment 1 - Linear Regression"
+author: "Bethany Hooper"
+date: "20/07/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+Student Number: 31025102
+
+```{r setup, include=FALSE, echo=FALSE}
+#installing packages required for the assignment in the background of the rmarkdown
+r <- getOption("repos")
+r["CRAN"] <- "https://cran.curtin.edu.au/"
+options(repos = r)
+
+if(!require(clusterGeneration)){
+  install.packages("clusterGeneration")
+}
+
+if(!require(mvtnorm)){
+  install.packages("mvtnorm")
+}
+
+if(!require(reshape2)){
+  install.packages("reshape2")
+}
+
+if(!require(tm)){
+  install.packages("tm")
+}
+
+if(!require(stopwords)){
+  install.packages("stopwords")
+}
+
+if(!require(ggplot2)){
+  install.packages("ggplot2")
+}
+
+if(!require(snowballc)){
+  install.packages("snowballc")
+}
+```
+
+**Question 1: EM for Document Clustering [30 Marks]**
+
+In this question, you need to develop an EM based document clustering algorithm using both soft and hard approches. Please read Activity 4.1 and 4.2 carefully before answering this question. 
+
+*Please perform data preprocessing and feature extraction as necessary. [5 marks]*
+```{r}
+#Load required libraries 
+library(dplyr)
+library(stopwords)
+library(ggplot2)
+library(tm)
+library(SnowballC)
+library(mvtnorm) # generates multivariate Gaussian sampels and calculate the densities
+library(reshape2) # data wrangling!
+library(clusterGeneration) # generates the covariance matrices that we need for producing synthetic data.
+```
+
+```{r}
+set.seed(1234)
+#read in data 
+data <- readLines("D:/UNI/data_science/fit5201/mywork/uni_fit5201/assignment_2/A2/q1/20ng-train-all-terms.txt")
+## randomly selet some samples
+index <- length(data)
+text <- data
+
+## the terms before '\t' are the lables (the newsgroup names) and all the remaining text after '\t' are the actual documents
+docs <- strsplit(text, '\t')
+rm(text)# just free some memory!
+
+# store the labels for evaluation
+labels <- unlist(lapply(docs, function(x) x[1]))
+# store the unlabeled texts
+docs <- data.frame(unlist(lapply(docs, function(x) x[2])))
+
+docs <- data.frame(doc_id = index,text = docs[,1])
+# convert to corpus
+docs <- DataframeSource(docs)
+docs <- Corpus(docs)
+
+```
+
+```{r}
+#pre-processing (created a function to clean the corpus; removing whitespace, punctuation, stopwords, and stemming the document)
+clean_corpus <- function(corpus){
+  corpus <- tm_map(corpus, stripWhitespace)
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removeWords, stopwords('english'))
+  corpus <- tm_map(corpus, stemDocument)
+    return(corpus)
+}
+clean_corp <- clean_corpus(docs)
+```
+
+```{r}
+#turn into term document matrix
+dtm <- DocumentTermMatrix(clean_corp)
+#remove sparse terms 
+dtm <- removeSparseTerms(dtm, 0.90)
+#turn into a matrix for analysis 
+# X <- as.matrix(dtm)
+```
+
+For example, you can view your clustering results as a series of decisions, one for each of the $N(N-1)/2$ pairs of documents in the collection, where N is the sample number. A true positive (TP) decision assigns two similar documents to the same cluster, a true negative (TN) decision assigns two dissimilar documents to different clusters. There are two types of errors we can commit. A (FP) decision assigns two dissimilar documents to the same cluster. A (FN) decision assigns two similar documents to different clusters. The Rand index ( ) measures the percentage of decisions that are correct. That is, it is simply accuracy
+$$\mathrm{RI}=\frac{\mathrm{TP}+\mathrm{TN}}{\mathrm{TP}+\mathrm{FP}+\mathrm{FN}+\mathrm{TN}}$$
+
+Please provide enough comments in your submitted code.
+
+### Data
+
+We use a subset of a publicly available dataset called 20 Newsgroups originally published in http://qwone.com/~jason/20Newsgroups/. This dataset contains more than 18K documents covering 20 different topics. For the simplicity and reducing the execution and evaluation times, we only use 1000 samples randomly selected from 4 categories. The filtered data is stored in 20ng-train-all-terms.txt file.
+
+### Background of the soft-EM and hard-EM
+
+##### Soft EM  
+  **E-Step**
+  
+  For each cluster $k$, based on its current mixing component $\varphi_k^{old}$, mean $\mu_k^{old}$ and covariance matrix $\Sigma_k^{old}$, calculate the posterior probability of observation $x_n$ being in cluster $k$, denoted by $\gamma(z_{nk})$
+  
+  $\gamma(z_{nk}):= p(z_{nk} = 1 \mid \varphi_k^{old}, \mu_k^{old}, \Sigma_k^{old}) = \frac{\varphi_k^{old}\mathcal{N}(x_n|\mu_k^{old},\Sigma_k^{old})}{\sum_j\varphi_j^{old}\mathcal{N}(x_n|\mu_j^{old},\Sigma_j^{old})}$  
+  
+  **M-Step**
+ 
+  Update the parameters as the following:
+  
+  mixing components: $\varphi_k^{new} = \frac{N_k}{N}$ where  $N_k = \sum_{n=1}^N \gamma(z_{nk})$  
+  mean: $\mu_k^{new} = \frac{1}{N_k}\sum_{n=1}^N\gamma(z_{nk})x_n$  
+  covariance matrix: $\Sigma_k^{new} = \frac{1}{N_k}\sum_{n=1}^N\gamma(z_{nk})(x_n - \mu_k)(x_n - \mu_k)^T$
+  
+##### Hard EM  
+  **E-Step**
+
+  For each cluster $k$, based on its current mixing component $\varphi_k^{old}$, mean $\mu_k^{old}$ and covariance matrix $\Sigma_k^{old}$, calculate the posterior probability of observation $x_n$ being in cluster $k$, denoted by $\gamma(z_{nk})$
+  
+  $\gamma(z_{nk}):= p(z_{nk} = 1 \mid \varphi_k^{old}, \mu_k^{old}, \Sigma_k^{old}) = \frac{\varphi_k^{old}\mathcal{N}(x_n|\mu_k^{old},\Sigma_k^{old})}{\sum_j\varphi_j^{old}\mathcal{N}(x_n|\mu_j^{old},\Sigma_j^{old})}$ 
+  
+  then set $z_{nk^*}=1$ and everywhere else to 0, where $k^* \leftarrow argmax_k \gamma(z_{nk})$ 
+  
+  **M-Step**
+  
+  Update the parameters as the following:
+    
+  mixing components: $\varphi_k^{new} = \frac{N_k}{N}$ where $N_k = \sum_{n=1}^N z_{nk}$  
+  mean: $\mu_k^{new} = \frac{1}{N_k}\sum_{n=1}^Nz_{nk}x_n$  
+  covariance matrix: $\Sigma_k^{new} = \frac{1}{N_k}\sum_{n=1}^N(z_{nk})(x_n - \mu_k)(x_n - \mu_k)^T$  
+  
+*The GMM function interface has been defined, in which function inputs and output are specified. Please don't rename the function or change its input or ouput. You need to implement both soft and hard EM-trained GMMs within the given interface and use the boolean parameter 'hardclustering' to decide which GMM is activated. [10 marks]*  
+```{r}
+#set random seed for reproducability 
+set.seed(1235)
+N <- 2373
+K <- 4
+D <- 129
+```
+
+```{r}
+# Initializations:
+Phi <- runif(K); Phi <- Phi/sum(Phi)    # Phi(k) indicates the fraction of samples that are from cluster k
+Nk <- matrix(0,nrow = K)    # initiate  the effective number of points assigned to each cluster
+Mu <- matrix(runif(K*D, min=-1)*10,nrow = K, ncol = D)    # initiate the centriods (means) of the clusters (randomly chosen)
+Sigma <- matrix(0,nrow = K, ncol = D^2)    # initiate the covariance matrix
+```
+
+```{r}
+# Create the covariance matrices:
+for (k in 1:K){
+    # For each cluster generate one sigma matrix
+    Sigma[k,] <- genPositiveDefMat(D)$Sigma[1:D^2]
+}
+```
+
+```{r}
+#read in the data needed for analysis. 
+# X is dataframe of data to cluster, K = number of clusters to form, hardclustering(T/F) for hard(True) or soft(False) clustering
+c.GMM <- function(X, K, hardclustering = FALSE){
+	# Setting the parameters:
+    eta.max <- 1000     # maximum number of iteratins
+    epsilon <- 10^-10     # termination threshold 
+
+    # Initialzations:
+    eta <- 1            # epoch counter
+    terminate <- FALSE  # termination condition
+
+	## Ramdom cluster initialization:
+    set.seed(1234) # save the random seed to make the results reproducble
+    Phi.hat <- 1/K                          # assume all clusters have the same size (we will update this later on)
+    Nk.hat <- matrix(N/K,nrow = K)          # refer to the above line!
+    Mu.hat <- as.matrix(X[sample(1:N, K), ]) # randomly  choose K samples as cluster means (any better idea?)
+    Sigma.hat <- matrix(,nrow = K, ncol = D^2) # create empty covariance matrices (we will fill them)
+    post <- matrix(,nrow=N, ncol=K)        # empty posterior matrix (the membership estimates will be stored here)
+      
+    ### for each cluster k:
+    for (k in 1:K){
+		#### initiate the k covariance matrix as an identity matrix (we will update it later on)
+        Sigma.hat[k,] <- diag(D) # initialize with identity covariance matrix
+	}
+	Mu.hat.old <- Mu.hat # store old estimates 
+	
+	if(hardclustering == "FALSE"){
+		tiny <- 1e-99 # to combat NA issue when normalising post
+		while(!terminate){
+			# E step: 
+			for(k in 1:K){
+				# Calculate posterier based on the estimated means, covariance and cluster size: 
+				post[, K] <- dmvnorm(X, Mu.hat[k,],  matrix(Sigma.hat[k,], ncol=D)) * Nk.hat[k]
+			}
+		  
+			post <- (post+ tiny)/rowSums(post + tiny) # normalization (to make sure post(k) is in [0,1] and sum(post)=1)
+			
+			#M step: 
+			for(k in 1:K){
+				#recalculate the estimations: 
+				Nk.hat[k] <- sum(post[,k]) # the effective number of points in cluster k
+				Phi.hat[k] <- sum(post[,k])/N     # the relative cluster size
+				Mu.hat[k,] <- colSums(post[,k] *X)/Nk.hat[k] # new means (cluster cenroids)
+				Sigma.hat[k,] <- (t(X-matrix(Mu.hat[k,],nrow = N, ncol=D, byrow = TRUE))%*%
+									(post[,k]*(X-matrix(Mu.hat[k,],nrow = N, ncol=D, byrow = TRUE))))/Nk.hat[k] # new covariance
+			}
+			
+			# increase the epoch counter 
+			eta <- eta + 1
+			
+			# check the termination criteria
+			terminate <- eta > eta.max | sum(abs(Mu.hat.old - Mu.hat)) <= epsilon 
+			
+			# record the means (neccessary for checking the termination critera)
+			Mu.hat.old <- Mu.hat
+		}
+		cat('maximum number of itterations: ', eta, '\n')
+	}
+	else{
+		# main loop
+		while(!terminate){
+			# E step: 
+			for(k in 1:K){
+				## calculate the posterior based on the estimated means,covariance and cluster size:
+				post[,k] <- dmvnorm(X, Mu.hat[k,],  matrix(Sigma.hat[k,], ncol=D)) * Nk.hat[k]
+			}
+			
+			# hard assignments: 
+			max.prob <- post==apply(post, 1, max) # for each point find the cluster with the maximum (estimated) probability
+			post[max.prob] <- 1 # assign each point to the cluster with the highest probability
+			post[!max.prob] <- 0 # remove points from clusters with lower probabilites
+			
+			# M step: 
+			for(k in 1:K){
+				        ## recalculate the estimations:
+						Nk.hat[k] <- sum(post[,k])        # the effective number of point in cluster k
+						Phi.hat[k] <- sum(post[,k])/N     # the relative cluster size
+						Mu.hat[k,] <- colSums(post[,k] *X)/Nk.hat[k] # new means (cluster cenroids)
+						Sigma.hat[k,] <- (t(X-matrix(Mu.hat[k,],nrow = N, ncol=D, byrow = TRUE))%*%
+											(post[,k]*(X-matrix(Mu.hat[k,],nrow = N, ncol=D, byrow = TRUE))))/Nk.hat[k] # new covariance
+			}
+			par(new = FALSE)
+			
+			# increase the epoch counter
+			eta <- eta + 1
+			
+			# check the termination criteria 
+			terminate <- eta > eta.max | sum(abs(Mu.hat.old - Mu.hat)) <= epsilon
+			    
+			# record the means (neccessary for checking the termination criteria)
+			Mu.hat.old <- Mu.hat
+			
+		}
+		cat('maximum number of itterations:',eta,'\n')
+	}
+	return(post)
+}
+```
+
+```{r}
+wcSoft <- c.GMM(X, K = 4, hardclustering = FALSE)
+
+
+```
+
+*Implement a function that use true labels to evaluate your clustering performance. Please read below instructions for more details. [10 marks] *
+```{r}
+# labels denote the true label of documents, predictions denote your clustering results
+evl <- function(labels, predictions){
+    # start your answer here ...
+    RI <- None
+    return (RI)
+}
+```
+
+*Compare the clustering performances of using word count and TFIDF as features, and explain your results. [5 marks]*
+```{r}
+tdm <- TermDocumentMatrix(clean_corp)
+tfidf <- weightTfIdf(tdm)
+
+
+```
+
+
+
+
+
+**Question 2 Neural Network [20 Marks]**
+In this question, you are required to construct a nueral network classifier with the H2O library. The MINST dataset is used in this question. In consideration of the computation cost, only a portion of the MINST dataset is used, with training (train.xlsx) and test sets (test.xlsx) containing 5000 records, respectively. 
+
+Detailed requirements are listed as below. 
+
+*1. Build a 3-layer neural network with only one hidden layer. Change the number of neurons in the hidden layer from 10 to 50 and record the test classification accuracy accordingly. [10 marks]*
+
+*2. Visualize the classification accuracy against the neuron number and explain your findings. [5 marks]*
+
+*3. Try to construct a deeper neural network with more hidden layers to see if there is any improvement on the test classification performance. This is an open question, you can determine the number of hidden layers and the neuron numbers in each hidden layer. Summarize and explain your results. [5 marks]*
+
+```{r}
+# start your answer here ...
+
+```

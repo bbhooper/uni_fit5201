@@ -1,0 +1,296 @@
+---
+title: "Activity 3.3 Logistic Regression"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+In this activity we implement logistic regression using Stochastic Gradient Dessent (SGD) to solve a binary classification problem. 
+
+## Dataset
+Similar to Activities 3.1 and 3.2, we generate a synthetic dataset and learn the model based on that.
+
+```{r}
+# Data Generation
+## Libraries:
+library(mvtnorm) # generates multivariate Gaussian sampels and calculate the densities
+library(ggplot2)
+library(reshape2)
+## Initialization
+set.seed(123)
+N <- 1000
+c0 <- '+1'; c1 <- '-1' # class labels
+mu0 <- c(4.5, 0.5); p0 <- 0.60
+mu1 <- c(1.0, 4.0); p1 <- 1 - p0
+sigma <- matrix(c(1, 0, 0, 1), nrow=2, ncol=2, byrow = TRUE) # shared covariance matrix
+sigma0 <- sigma;   sigma1 <- sigma
+data <- data.frame(x1=double(), x2=double(), label=factor(levels = c(c0,c1))) # empty data.frame
+## Generate class labels
+data[1:N,'label'] <- sample(c(c0,c1), N, replace = TRUE, prob = c(p0, p1))
+## calculate the size of each class
+N0 <- sum(data[1:N,'label']==c0); N1 <- N - N0
+## Sample from the Gaussian distribution accroding to the class labels and statitics.
+data[data[1:N,'label']==c0, c('x1', 'x2')] <- rmvnorm(n = N0, mu0, sigma0)
+data[data[1:N,'label']==c1, c('x1', 'x2')] <- rmvnorm(n = N1, mu1, sigma1)
+## Split data to train and test datasets
+train.len <- round(N/2)
+train.index <- sample(1:N, train.len, replace = FALSE)
+train.data <- data[train.index, c('x1', 'x2')]; train.label <- data[train.index, 'label']
+test.data <- data[-train.index, c('x1', 'x2')]; test.label <- data[-train.index, 'label']
+```
+
+### Visualization of The Generated Data
+
+```{r}
+## Take a look at the data set
+ggplot(data=data, aes(x=x1, y=x2, color=label, label=ifelse(label==c0, '+', '-'))) +
+    geom_point(x=mu0[1], y=mu0[2], size=4, color = 'black') +
+    geom_point(x=mu1[1], y=mu1[2], size=4, color = 'black') +
+    geom_text(size = 5, alpha=0.5) +
+    ggtitle ('Data set') + theme_minimal()
+```
+
+## Steps to Build a Logistic Regression
+Taking the following steps is neccesseary to build a logistic regression:
+
+1. Implement sigmoid function $\sigma(\pmb{w}.\mathbf{x})$, and initialize weight vector $\pmb{w}$, learning rate $\eta$ and stopping criterion $\epsilon$.</li>
+2. Repeat the followings until the improvement becomes negligible (i.e., $|\mathcal{L}(\pmb{w}^{(\tau+1)})-\mathcal{L}(\pmb{w}^{(\tau)})| \lt \epsilon$):
+  + Shuffle the training data</li>
+  + For each datapoint in the training data do:
+     $$\pmb{w}^{(\tau+1)} := \pmb{w}^{(\tau)} - \eta (\sigma(\pmb{w}.\mathbf{x}) - t_n) \pmb{x}_n$$
+
+In the followings, we implement each of these steps.
+
+## Building Linear Regression
+Similar to the previous activities, we first define some auxilary functions and then develop the logsitic regresion.
+### Auxilary Functions
+
+
+```{r}
+# auxiliary function that predicts class labels
+predict <- function(w, X, c0, c1){
+    sig <- sigmoid(w, X)
+    return(ifelse(sig>0.5, c1,c0))
+}
+    
+# auxiliary function that calculate a cost function
+cost <- function (w, X, T, c0){
+    sig <- sigmoid(w, X)
+    return(sum(ifelse(T==c0, 1-sig, sig)))
+}
+```
+
+**Step 1 (Sigmoid):** Let's define our sigmoid function, first.
+
+```{r}
+# Sigmoid function (=p(C1|X))
+sigmoid <- function(w, x){
+    return(1.0/(1.0+exp(-w%*%t(cbind(1,x)))))    
+}
+```
+
+**Step 1 (initializations):** Now, we initiate the weight vector, learning rate, stopping threshold, etc.
+
+```{r}
+# Initializations
+tau.max <- 1000 # maximum number of iterations
+eta <- 0.01 # learning rate
+epsilon <- 0.01 # a threshold on the cost (to terminate the process)
+tau <- 1 # iteration counter
+terminate <- FALSE
+
+## Just a few name/type conversion to make the rest of the code easy to follow
+X <- as.matrix(train.data) # rename just for conviniance
+T <- ifelse(train.label==c0,0,1) # rename just for conviniance
+
+W <- matrix(,nrow=tau.max, ncol=(ncol(X)+1)) # to be used to store the estimated coefficients
+W[1,] <- runif(ncol(W)) # initial weight (any better idea?)
+
+# project data using the sigmoid function (just for convenient)
+Y <- sigmoid(W[1,],X)
+
+costs <- data.frame('tau'=1:tau.max)  # to be used to trace the cost in each iteration
+costs[1, 'cost'] <- cost(W[1,],X,T, c0)
+```
+
+**Step 2:** Here, we use SGD to learn the weight vector. Note that there are two loops. In the outter loop, we shuffle the samples and then start the inner loop. In the inner loop, we visit the training samples one by one and update the weights accordingly.
+
+```{r}
+while(!terminate){
+  #for each datapoint:
+  for (i in 1:train.len){
+    # check termination criteria:
+    if (tau >= tau.max | cost(W[tau,],X,T, c0) <=epsilon) {terminate<-TRUE;break}
+        
+    Y <- sigmoid(W[tau,],X)
+            
+    # Update the weights
+    W[(tau+1),] <- W[tau,] - eta * (Y[i]-T[i]) * cbind(1, t(X[i,]))
+        
+    # record the cost:
+    costs[(tau+1), 'cost'] <- cost(W[tau,],X,T, c0)
+        
+    # update the counter:
+    tau <- tau + 1
+        
+    # decrease learning rate:
+    eta = eta * 0.999
+  }
+}
+# Done!
+costs <- costs[1:tau, ] # remove the NaN tail of the vector (in case of early stopping)
+
+# the  final result is:
+w <- W[tau,]
+cat('\nThe  final coefficents are:',w)
+```
+
+# Visualizations
+
+```{r}
+# visualize:
+ggplot(data=train.data, aes(x=x1, y=x2, label=ifelse(train.label!=c1, '+', '-'), color=factor(predict(w,train.data,c0,c1)==train.label))) +
+    geom_text(alpha=0.75) +
+    scale_color_discrete(guide = guide_legend(title = 'Prediction'))+
+    geom_abline(intercept=-w[1]/w[3], slope=-w[2]/w[3]) +
+    ggtitle('Training Dataset and Decision Boundary') +
+    theme_minimal()
+```
+
+```{r}
+ggplot(data=costs, aes(x=tau, y=log(cost)), color=black) +
+    geom_line() + ggtitle('Log of Cost over time') + theme_minimal()
+```
+
+
+# Discussions:
+
+1. How can we modify the cost function to prevent overfitting? Discuss the possibility of adding regularization term(s).
+2. Discuss what will happen if the train sample size was very small.
+3. Discuss what will happen if the classes were not linearly separable.
+4. Discuss the benefit of having the probability of class membership (produced by the probabilistic models like logistic regresion) over only having the predicted class labels (similar to the output of perceptron, for example).
+5. Modify your code and develop a batch gradient descent and ompare it with SGD. Discuss your findings (e.g., convergence speed and chance of overfitting).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

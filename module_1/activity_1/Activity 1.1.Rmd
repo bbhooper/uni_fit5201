@@ -85,7 +85,7 @@ set.seed(1234)
 # permute iris, shuffle or mix them up
 iris <- iris[sample(1:nrow(iris),nrow(iris)),]
 # create  training and testing subsets:
-train.index = 1:100
+train.index = 1:105
 train.data <- iris[train.index, -5] # grab the first 100 records, leave out the species (last column)
 train.label <- iris[train.index, 5]
 test.data <- iris[-train.index, -5] # grab the last 50 records, leave out the species (last column)
@@ -117,7 +117,7 @@ majority <- function(x) {
 
 ```{r}
 # KNN function (distance should be one of euclidean, maximum, manhattan, canberra, binary or minkowski)
-knn <- function(train.data, train.label, test.data, K=3, distance = 'euclidean'){
+knn1 <- function(train.data, train.label, test.data, K=3, distance = 'euclidean'){
     ## count number of train samples
     train.len <- nrow(train.data)
     
@@ -144,21 +144,21 @@ knn <- function(train.data, train.label, test.data, K=3, distance = 'euclidean')
 
 ```{r}
 # let see what is the prediciton of our knn for test samples when K=4
-knn(train.data, train.label, test.data, K=4)
+knn1(train.data, train.label, test.data, K=4)
 ```
 
 ```{r}
 # and a confusion matrix for K = 5
-prop.table(table(knn(train.data, train.label, test.data, K=5), test.label))*100
+prop.table(table(knn1(train.data, train.label, test.data, K=5), test.label))*100
 ```
 
 ```{r}
 # calculate the train and test missclassification rates for K in 1:100 
 # THIS MAY TAKE A FEW MINUTES TO COMPLETE!
-miss <- data.frame('K'=1:100, 'train'=rep(0,100), 'test'=rep(0,100))
-for (k in 1:100){
-    miss[k,'train'] <- sum(knn(train.data, train.label, train.data, K=k) != train.label)/nrow(train.data)*100
-    miss[k,'test'] <-  sum(knn(train.data, train.label, test.data, K=k)  != test.label)/nrow(test.data)*100
+miss <- data.frame('K'=1:6, 'train'=rep(0,6), 'test'=rep(0,6))
+for (k in 1:6){
+    miss[k,'train'] <- sum(knn1(train.data, train.label, train.data, K=k) != train.label)/nrow(train.data)*100
+    miss[k,'test'] <-  sum(knn1(train.data, train.label, test.data, K=k)  != test.label)/nrow(test.data)*100
 }
 ```
 

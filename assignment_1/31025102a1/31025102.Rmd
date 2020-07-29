@@ -1,0 +1,752 @@
+---
+title: "FIT5209 Assignment 1 - Linear Regression"
+author: Bethany Hooper
+date: 20/07/2020
+output:
+  html_document: default
+  pdf_document: default
+---
+Student Number: 31025102
+
+In this assessment, you need to answer all the questions about KNN, Linear Regression, Regularization, Logistic Regression, K-fold cross-validation, and other concepts covered in Module 1-3. R studio is recommended to use to complete your assessment. All codes need comments to help markers to understand your idea. If no comment is given, you may have a 10% redundancy on your mark. Please refer to weekly activities as examples for how to write comments. After you have answered all the questions, please knit your R notebook file to HTML or PDF format. Submit both .rmd file and .html or .pdf file to assessment 1 dropbox via the link on the Assessment page. You can compress your files into a zip file for submission. The total mark of this assessment is 100, which worths 30% of your final result. 
+
+hint: Please review all reading materials in Module 1-3 carefully, especially the activities.
+
+
+
+```{r setup, include=FALSE, echo=FALSE}
+#installing packages required for the assignment in the background of the rmarkdown
+r <- getOption("repos")
+r["CRAN"] <- "https://cran.curtin.edu.au/"
+options(repos = r)
+
+if(!require(reshape2)){
+  install.packages("reshape2")
+}
+
+if(!require(ggplot2)){
+  install.packages("ggplot2")
+}
+
+if(!require(corrplot)){
+  install.packages("corrplot")
+}
+
+if(!require(gridExtra)){
+  install.packages("gridExtra")
+}
+if(!require(dplyr)){
+  install.packages("dplyr")
+}
+
+if(!require(glmnet)){
+  install.packages("glmnet")
+}
+```
+
+**Question 1 - KNN (20 marks)** <br/>
+
+In this question, it is expected that the iris dataset will be split into training and test data sets using a ratio of 7:3 and then run through a KNN classifier in order to predict the class of iris plants. Firstly, it is useful to visualise the data in order to get a general understanding of the iris dataset. Below is a scatterplot comparing the variables *Sepal.Width* and *Sepal.Length* using  *Species* to catagorise them. It can be noted that there appears to be relatively high correlation between sepal length and sepal width in the Iris-Setosa, while less of a correlation can be observed in the Iris-Virginica and the Iris-Versicolor flowers. This is evident in the spread of data points for these two flowers, they are more spread out and do not cluster like seen in the Iris-Setosa flowers. A similar pattern is shown when comparing *Petal.Width* and *Petal.Length*. After visualising the data it can then be split into the training and test sets in preperation for the KNN classifier. 
+
+```{r}
+#load in iris data from datasets package
+library(datasets)
+data(iris)
+
+#create scatterplot to illistrate petal measurement and visualise the data 
+sepal_plot <- ggplot(data = iris, aes(x = Sepal.Length, y = Sepal.Width, color = Species)) + 
+    geom_point() + geom_rug()+ theme_minimal() + ggtitle("Sepal Measurements")
+petal_plot <- ggplot(data = iris, aes(x = Petal.Length, y = Petal.Width, color = Species)) + 
+    geom_point() + geom_rug()+ theme_minimal() + ggtitle("Petal Measurements")
+grid.arrange(sepal_plot, petal_plot, ncol = 2)
+
+```
+
+**a) Split the data set into a training and a test set with the ratio of 7:3. (1 mark)**
+
+```{r}
+set.seed(223)
+iris <- iris[sample(1:nrow(iris),nrow(iris)),]
+# create  training and testing subsets:
+train.index = 1:105
+train.data <- iris[train.index, -5] # grab the first 105 records, leave out the species (last column)
+train.label <- iris[train.index, 5]
+test.data <- iris[-train.index, -5] # grab the last 45 records, leave out the species (last column)
+test.label <- iris[-train.index, 5]
+```
+
+**b) Implement a KNN classifier. (5 marks)**
+
+```{r}
+# define a function that calculates the majority votes (or mode!)
+majority <- function(x) {
+   uniqx <- unique(x)
+   uniqx[which.max(tabulate(match(x, uniqx)))]
+}
+
+#create Knn function using Euclidean distance 
+knn1 <- function(train.data, train.label, test.data, K=k, distance = 'euclidean'){
+    train.len <- nrow(train.data)
+    test.len <- nrow(test.data)
+    dist <- as.matrix(dist(rbind(test.data, train.data), method= distance))[1:test.len, (test.len+1):(test.len+train.len)]
+    for (i in 1:test.len){
+        nn <- as.data.frame(sort(dist[i,], index.return = TRUE))[1:K,2]
+        test.label[i]<- (majority(train.label[nn]))
+    }
+    return (test.label)
+}
+
+```
+
+
+```{r}
+#create Knn function using Manhattan distance 
+knn2 <- function(train.data, train.label, test.data, K=k, distance = 'manhattan'){
+    train.len <- nrow(train.data)
+    test.len <- nrow(test.data)
+    dist <- as.matrix(dist(rbind(test.data, train.data), method= distance))[1:test.len, (test.len+1):(test.len+train.len)]
+    for (i in 1:test.len){
+        nn <- as.data.frame(sort(dist[i,], index.return = TRUE))[1:K,2]
+        test.label[i]<- (majority(train.label[nn]))
+    }
+    return (test.label)
+}
+```
+
+
+```{r}
+#create Knn function using Canberra distance 
+knn3 <- function(train.data, train.label, test.data, K=k, distance = 'canberra'){
+    train.len <- nrow(train.data)
+    test.len <- nrow(test.data)
+    dist <- as.matrix(dist(rbind(test.data, train.data), method= distance))[1:test.len, (test.len+1):(test.len+train.len)]
+    for (i in 1:test.len){
+        nn <- as.data.frame(sort(dist[i,], index.return = TRUE))[1:K,2]
+        test.label[i]<- (majority(train.label[nn]))
+    }
+    return (test.label)
+}
+```
+
+
+```{r}
+#create Knn function using Minkowski distance 
+knn4 <- function(train.data, train.label, test.data, K=k, distance = 'minkowski'){
+    train.len <- nrow(train.data)
+    test.len <- nrow(test.data)
+    dist <- as.matrix(dist(rbind(test.data, train.data), method= distance))[1:test.len, (test.len+1):(test.len+train.len)]
+    for (i in 1:test.len){
+        nn <- as.data.frame(sort(dist[i,], index.return = TRUE))[1:K,2]
+        test.label[i]<- (majority(train.label[nn]))
+    }
+    return (test.label)
+}
+```
+
+
+**c) Investigate the impact of different K (from 1 to 6) values on the model performance (ACC) and the impact of different distance measurements (euclidean, manhattan, canberra, and minkowski) on the model performance (ACC). Visualize and discuss your findings. (14 marks)** <br/>
+
+```{r}
+# calculate the train and test missclassification rates for K in 1:6 for each distance 
+acc.Eu <- data.frame('K'=1:6, 'train'=rep(0,6), 'test'=rep(0,6))
+for (k in 1:6){
+    acc.Eu[k,'train'] <- sum(knn1(train.data, train.label, train.data, K=k) == train.label)/nrow(train.data)*100
+    acc.Eu[k,'test'] <-  sum(knn1(train.data, train.label, test.data, K=k)  == test.label)/nrow(test.data)*100
+}
+
+
+acc.Man <- data.frame('K'=1:6, 'train'=rep(0,6), 'test'=rep(0,6))
+for (k in 1:6){
+    acc.Man[k,'train'] <- sum(knn2(train.data, train.label, train.data, K=k) == train.label)/nrow(train.data)*100
+    acc.Man[k,'test'] <-  sum(knn2(train.data, train.label, test.data, K=k)  == test.label)/nrow(test.data)*100
+}
+
+acc.Can <- data.frame('K'=1:6, 'train'=rep(0,6), 'test'=rep(0,6))
+for (k in 1:6){
+    acc.Can[k,'train'] <- sum(knn3(train.data, train.label, train.data, K=k) == train.label)/nrow(train.data)*100
+    acc.Can[k,'test'] <-  sum(knn3(train.data, train.label, test.data, K=k)  == test.label)/nrow(test.data)*100
+}
+
+acc.Min <- data.frame('K'=1:6, 'train'=rep(0,6), 'test'=rep(0,6))
+for (k in 1:6){
+    acc.Min[k,'train'] <- sum(knn4(train.data, train.label, train.data, K=k) == train.label)/nrow(train.data)*100
+    acc.Min[k,'test'] <-  sum(knn4(train.data, train.label, test.data, K=k)  == test.label)/nrow(test.data)*100
+}
+
+```
+
+```{r}
+# melt each dataframe for plotting 
+acc.m1 <- melt(acc.Eu, id='K') # reshape for visualization
+names(acc.m1) <- c('K', 'Type', 'Accuracy')
+
+acc.m2 <- melt(acc.Man, id='K') # reshape for visualization
+names(acc.m2) <- c('K', 'Type', 'Accuracy')
+
+acc.m3 <- melt(acc.Can, id='K') # reshape for visualization
+names(acc.m3) <- c('K', 'Type', 'Accuracy')
+
+acc.m4 <- melt(acc.Min, id='K') # reshape for visualization
+names(acc.m4) <- c('K', 'Type', 'Accuracy')
+```
+
+
+```{r}
+#plot each dataframe for training and test sets 
+eu.plot <- ggplot(data=acc.m1, aes(x= K, y=Accuracy, color=Type)) + geom_line() +
+       scale_color_discrete(guide = guide_legend(title = NULL)) + theme_minimal() +
+       ggtitle("Accuracy of KNN Algorithm \nUsing Euclidean Distance for K = 1:6") + theme(plot.title = element_text(hjust = 0.5))
+
+
+man.plot <- ggplot(data=acc.m2, aes(x=K, y=Accuracy, color=Type)) + geom_line() +
+       scale_color_discrete(guide = guide_legend(title = NULL)) + theme_minimal() +
+       ggtitle("Accuracy of KNN Algorithm \nUsing Manhattan Distance for K = 1:6") + theme(plot.title = element_text(hjust = 0.5))
+
+
+can.plot <- ggplot(data=acc.m3, aes(x=K, y=Accuracy, color=Type)) + geom_line() +
+       scale_color_discrete(guide = guide_legend(title = NULL)) + theme_minimal() +
+       ggtitle("Accuracy of KNN Algorithm \nUsing Canberra Distance for K = 1:6") + theme(plot.title = element_text(hjust = 0.5))
+
+
+min.plot <- ggplot(data=acc.m4, aes(x=K, y=Accuracy, color=Type)) + geom_line() +
+       scale_color_discrete(guide = guide_legend(title = NULL)) + theme_minimal() +
+       ggtitle("Accuracy of KNN Algorithm \nUsing Minkowski Distance for K = 1:6") + theme(plot.title = element_text(hjust = 0.5)) 
+grid.arrange(eu.plot, man.plot, can.plot, min.plot, nrow = 2, ncol = 2)
+```
+Given the results of the KNN classifier it appears that in terms of training data across the four different distance measures; k = 1 and k = 2 have the highest accuracy rate with an accuracy of 100% demonstrated in the graphs provided above. At k =3 Euclidean, Manhattan and Minkowski distance are the same at 98.095% however, the accuracy of the Canberra distance only drops to 99.048%. When using Euclidean, Manhattan and Minkowski distance as measurements on the training data the accuracy results appear to be the same. This could be due to the fact that Minkowski distance is a generalisation of Euclidean and Manhattan distance.
+
+The line indicating the test data’s accuracy only changes when using Manhattan distance. Euclidean and Minkowski graphs are exactly the same (93.33% across all k values), this could be a result of the inbuilt *dist()* function that measures the distances has Minkowski distance default to p =2 (Euclidean distance). The Canberra distance graph has the accuracy at a flat 91.11% at any given k value. The Manhattan distance graph shows a drop in accuracy from k = 5 (93.33%) to k = 6 (91.11%). Further investigation could be made in the model performance by bootstrapping or  performing cross-validation on the dataset. 
+
+
+**Question 2 - Linear Regression (35 marks)** <br/>
+
+In this question you need to implement a linear regression model to predict health care cost. The data set used in this question can be found in 'insurance.csv'. The data set has 7 features, which are summarized as below.
+
+* Age: insurance contractor age, years
+* Sex: insurance contractor gender, [female, male]
+* BMI: Body mass index, providing an understanding of body, weights that are relatively high or low relative to height, objective index of body weight (kg / m ^ 2) using the ratio of height to weight, ideally 18.5 to 24.9
+* Children: number of children covered by health insurance / Number of dependents
+* Smoker: smoking, [yes, no]
+* Region: the beneficiary’s residential area in the US, [northeast, southeast, southwest, northwest]
+* Charges: Individual medical costs billed by health insurance, $ #predicted value
+
+```{r}
+library(dplyr)
+data = read.csv('insurance.csv')
+```
+
+**a) Perform data pre-processing, including removing invalid data and transfromatting the categorical features to numerical features. (4 marks)** <br/>
+
+Before the data can be used in any sort of linear regression, it first must be checked and cleaned of any missing, invalid or outlier data. Initially all missing values were removed from the dataset. Then each attribute was checked via a box plot to check to see if there were any outliers present in the dataset, 9 outliers were found in the *bmi* attribute and were removed from the data set as they were outside the known range for bmis (12-42). 136 outliers were found in the charges attribute and were also removed from the dataset. The data was also normalised for the convenience of the analysis. 
+
+```{r}
+##check for missing values 
+data <- na.omit(data)
+
+par(mfrow = c(2, 2))
+##check for outliers 
+outliers.age <- boxplot.stats(data$age)$out
+boxplot(data$age, main = "Age", boxwex = 0.1)
+
+
+outliers.bmi <- boxplot(data$bmi, plot = FALSE)$out #### appears to be outliers that are unrealistic bmi scores and as such will be removed for being invalid 
+boxplot(data$bmi, main = "BMI", boxwex = 0.1)
+
+
+outliers.children <- boxplot.stats(data$children)$out
+boxplot(data$children, main = "Children", boxwex = 0.1)
+
+
+outliers.charges <- boxplot.stats(data$charges)$out
+boxplot(data$charges, main = "Charges", boxwex = 0.1)
+
+#find which rows contain bmi outliers and remove rows
+data[which(data$bmi %in% outliers.bmi), ]
+data <- data[-which(data$bmi %in% outliers.bmi), ]
+
+data[which(data$charges %in% outliers.charges), ]
+data <- data[-which(data$charges %in% outliers.charges), ]
+
+#check to make sure outliers were removed  
+data[which(data$bmi %in% outliers.bmi), ]
+data[which(data$charges %in% outliers.charges), ]
+
+## transformatting categorical data into numerical 
+data$sex <- as.numeric(data$sex)
+data$smoker <- as.numeric(data$smoker)
+data$region <- as.numeric(data$smoker)
+```
+
+**b) Split the data set into a training set and a test set, with ratio of 7:3. (2 mark)** <br/>
+
+The data was normalised and split into  into training and test datasets with a ratio of 7:3 
+
+```{r}
+# set seed for replication of results 
+set.seed(334)
+
+#create function to normalise the data to aid in creating the linear model 
+normalize <- function(x){
+  num <- x - min(x)
+  denom <- max(x) - min(x)
+  return(num/denom)
+}
+
+#normalise the data 
+normdata <- as.data.frame(lapply(data, normalize))
+
+# divide data into training and testing sets
+D <- 7
+N <- 1193
+train.len <- 835
+train.index <- sample(1:N,train.len)
+train.data <- normdata[train.index,  1:D]
+test.data <- normdata[-train.index, 1:D]
+
+
+```
+
+**c) Implement a linear regression model and train the model with your training data. Visualize the parameter updating process, test error (RMSE) in each iteration, and cost convergence process. Please be advised that built-in models in any realeased R package, like glm, is not allowed to use in this question. You can choose your preferred learning rate and determine the best iteration number. (8 marks)** <br/>
+
+```{r}
+###create function to calculate coefficients for linear model using charges as the response variable
+#data: the whole data frame 
+#target: column name that serves as the output 
+#learning rate: learning rate for the gradient descent algoritm
+#iteration: stop criterion: maximum iterations allowed for training the gradient descent algorith
+#epsilon: stop criterion: if the trained parameter's difference between the two interations is less than this value the algorithm will halt. 
+GradD <- function( data, target, learning_rate, iteration, 
+                             epsilon = .001, method  )	                         
+{
+  # separate the input and output variables 
+  input  <- data %>% select( -one_of(target) ) %>% as.matrix()
+	output <- data %>% select( one_of(target) ) %>% as.matrix()
+  
+  # implementation trick, after the normalizing the original input column
+  # add a new column of all 1's to the first column, this serves as X0
+  input <- cbind( theta0 = 1, input )
+  
+  # theta_new : initialize the theta value as all 1s
+  # theta_old : a random number whose absolute difference between new one is 
+  #             larger than than epsilon 
+  theta_new <- matrix( 1, ncol = ncol(input) )
+  theta_old <- matrix( 2, ncol = ncol(input) )
+  
+  # cost function 
+  costs <- function( input, output, theta )
+  {
+    sum( ( input %*% t(theta) - output )^2 ) / ( 2) #* nrow(output) )
+  }
+  
+  # records the theta and cost value for visualization ; add the inital guess 
+  theta_trace <- vector( mode = "list", length = iteration ) 
+  theta_trace[[1]] <- theta_new
+  costs_trace <- numeric( length = iteration )
+  costs_trace[1] <- costs( input, output, theta_old )
+  
+  # first derivative of the cost function 
+    derivative <- function( input, output, theta, step )
+    {
+      error <- ( input %*% t(theta) ) - output 
+      descent <- ( t(input) %*% error ) / nrow(output)
+      return( t(descent) )
+    }		
+  # keep updating as long as any of the theta difference is still larger than epsilon
+  # or exceeds the maximum iteration allowed
+  step <- 1 
+  while( any( abs(theta_new - theta_old) > epsilon ) & step <= iteration )
+  {
+    step <- step + 1
+    
+    # gradient descent 
+    theta_old <- theta_new
+    theta_new <- theta_old - learning_rate * derivative( input, output, theta_old, step )
+    
+    # record keeping 
+    theta_trace[[step]] <- theta_new
+    costs_trace[step]   <- costs( input, output, theta_new )
+  }
+  
+  
+  # returns the cost and theta record 
+  costs <- data.frame( iteration = iteration, costs = costs_trace )
+  theta <- data.frame( do.call( rbind, theta_trace ), row.names = NULL )
+  
+  return( list( costs = costs, theta = theta) )
+}
+
+```
+
+```{r}
+#create x and y variables using insurance data 
+set.seed(223)
+#run gradient descent function 
+
+gdmodel <- GradD(data = train.data, target = 'charges',  learning_rate = 0.6, iteration  = 1500, epsilon = 10^-10)
+
+#use lm function to check parameters 
+lm1 <- lm(charges ~., data = train.data)
+
+parameters_gd <- gdmodel$theta[ nrow(gdmodel$theta), ]
+```
+
+The gradient descent function was created (above). *train.data* was put through the algorithm using a learning rate of 0.6, with 2000 iterations and epsilon = 10^-10. This combination produced values close to the paramaters produced by using the lm() function as shown in the table below. 
+
+model | Intercept/theta0 | age | sex | bmi | children | smoker | region 
+----- | ---------------- | --- | --- | --- | -------- | ------ | ------
+gdmodel | `r parameters_gd['theta0']`| `r parameters_gd['age']` | `r parameters_gd['sex']` | `r parameters_gd['bmi']` | `r parameters_gd['children']` | `r parameters_gd['smoker']` | `r parameters_gd['region']`
+lm1 | `r lm1$coefficients['(Intercept)']` | `r lm1$coefficients['age']` | `r lm1$coefficients['sex']` | `r lm1$coefficients['bmi']` | `r lm1$coefficients['children']` | `r lm1$coefficients['smoker']` |  `r lm1$coefficients['region']`
+
+The model given by the training data is as follows 
+
+$$charges = `r parameters_gd[1,1]` + `r parameters_gd[1,2]`age -`r parameters_gd[1,3]`sex + `r parameters_gd[1,4]`bmi + `r parameters_gd[1,5]`children + `r parameters_gd[1,6]`smoker + `r parameters_gd[1,4]`region +\epsilon$$
+```{r}
+W.m <- as.data.frame(gdmodel$theta); names(W.m)<-c('w0','w1','w2','w3','w4', 'w5', 'w6')
+W.m$iteration <-1:nrow(gdmodel$theta)
+W.m <-melt(W.m, id='iteration'); names(W.m) <- c('iteration', 'coefficients', 'values')
+
+W.mcost <- as.data.frame(gdmodel$costs)
+W.mcost$iteration <-1:nrow(gdmodel$costs)
+W.mcost <-melt(W.mcost, id='iteration')
+
+gd.coeff <- ggplot(data=W.m, aes(x=iteration, y=values, color=coefficients)) + geom_line() + ggtitle('Estimated Coefficients') + theme_minimal() + theme(plot.title = element_text(hjust = 0.5)) 
+gd.cost.plot <- ggplot(data=W.mcost, aes(x=iteration, y=value, color=variable)) + geom_line() + ggtitle('cost convergence') + theme_minimal() + theme(plot.title = element_text(hjust = 0.5)) + coord_cartesian(xlim = c(1, 1300), ylim = c(0, 100))
+grid.arrange(gd.coeff, gd.cost.plot, nrow = 2)
+```
+
+```{r}
+gdmodel.test <- GradD(data = test.data, target = 'charges', learning_rate = 0.6, iteration = 1500, epsilon = 10^-10)
+
+parameters_gdt <- gdmodel.test$theta[ nrow(gdmodel.test$theta), ]
+parameters_gdt
+
+error <- data.frame('iteration' = 1:1500)
+error['train'] <- as.matrix(cbind(gdmodel$costs[,2]))
+error['test'] <- as.matrix(cbind(gdmodel.test$costs[,2]))
+
+error <- as.data.frame(error); names(error)<-c('iteration', 'train', 'test')
+
+
+gd.error <- ggplot(data=error, aes(x = iteration)) +
+    geom_line(aes(y = train, colour = "train")) + geom_line(aes(y = test, colour = "test")) + ggtitle('Test and Train Error') + scale_color_discrete(guide = guide_legend(title = 'Errors')) +theme_minimal() + theme(plot.title = element_text(hjust = 0.5)) + coord_cartesian(xlim = c(1, 1300), ylim = c(0, 100))
+grid.arrange(gd.coeff, gd.error, nrow = 2)
+```
+
+**4. Evaluate your model by calculating the RMSE, and visualizing the residuals of test data. Please note that explanation of your residual plot is needed. (5 marks) **
+```{r}
+#manually bind coefficients to betas (this was done because using the coefficients from parameter_gd kept producing errors)
+betas <- cbind(0.0378452, 0.3197011, -0.0060906, 0.0483259, 0.0561027, 0.223986, 0.223986)
+
+#calculate predicted values using test data 
+our_preds <- betas[1] + as.matrix(test.data[,-7]) %*% betas[-1]
+
+#calcularte rsme 
+rsme <- sqrt(mean((our_preds-(test.data[,7])^2)))
+rsme
+
+#caclulate residuals 
+resid <- (test.data[, 7]) - our_preds
+stres <- resid / rsme
+plot(our_preds, stres, main = "Standardised Residuals vs. Predicted Values", xlab = "Predicted Values", ylab = "Standardised Residuals")
+```
+Given that the data has been normalised for this analysis an RSME of `r rsme` is relatively high, suggesting that the model is potentially a poor fit. Observing the standardised residuals vs. predicted values plot above further renforces this. The dense gathering of points in the lower half of the plot is suggestive of heteroscedasticity and the model could benifit from transforming ones of the variables.  
+
+
+
+**5. Does your model overfit? Which features do you think are not significant? Please justify your answers. For example, you can analyze the significance of a feature from correlation, variance, etc. (8 marks)**
+```{r}
+
+```
+
+
+**6. Use the glmnet library to biult two linear regression models with Lasso and Ridge regularization, respectively. In comparison to your model, how well do these two models perform? Do the regularized models automatically filter out the less significant features? What are the differences of these two models? Please justify your answers. (8 marks)**
+```{r}
+train.len <- 835
+train.index <- sample(1:N,train.len)
+train.data1 <- normdata[train.index,  1:6]
+train.label <- normdata[train.index, 'charges']
+test.data1 <- normdata[-train.index, 1:6]
+test.label <- normdata[-train.index, 'charges']
+```
+
+```{r}
+#run an linear regression using r package to check coefficients 
+library(glmnet)
+fitAndPlot <- function(train.data1, train.label, alpha=0, lambda = c(0:5000)/1000){
+    # fit the model
+    fit <- glmnet(x = as.matrix(train.data1), y=train.label, alpha = alpha, lambda = lambda)
+
+    # aggrigate the outputs
+    out <- as.data.frame(as.matrix(t(fit$beta)))
+    out[,c('nonzero', 'lambda')] <- c(fit$df, fit$lambda)
+
+    # reshape the outputs (for plotting)
+    out.m<-melt(out, id=c('lambda', 'nonzero'))
+    names(out.m) <- c('lambda', 'nonzero', 'feature', 'coefficient')
+
+    # plot coefficients vs lambda 
+    g <- ggplot(data = out.m, aes(x=log(lambda), y=coefficient, color=factor(feature))) + geom_line() +
+        ggtitle('Coefficients vs. lambda') + theme_minimal()
+    print(g)
+    
+    # plot number of nonzero coefficients (as ameasure of model complexity) vs lambda 
+    #g <- ggplot(data = out.m, aes(x=log(lambda), y=nonzero)) + geom_line() + 
+    #    scale_color_discrete(guide = guide_legend(title = NULL)) + 
+    #    ggtitle('Nonzero Coefficients vs. lambda') + theme_minimal()
+    #print(g)
+    
+    # run the predictions
+    train.predict <- predict(fit, newx=as.matrix(train.data1))
+    test.predict <- predict(fit, newx=as.matrix(test.data1))
+
+    # calculate the standard errors
+    error <- data.frame('lambda' = out$lambda, 
+                    'train' = sqrt(colSums((train.predict - train.label)^2)/nrow(train.predict)),
+                    'test' = sqrt(colSums((test.predict - test.label)^2)/nrow(test.predict)))
+    error.m <- melt(error, id='lambda')
+    names(error.m) <- c('lambda', 'set', 'SE')
+
+    # plot sum of squarred error for train and test sets vs lambda 
+    g <- ggplot(data = error.m, aes(x= log(lambda), y = SE, color = factor(set))) + geom_line() +  ylim(0,1) +
+        scale_color_discrete(guide = guide_legend(title = NULL)) + 
+        ggtitle('Sum of squarred errors vs. lambda') + theme_minimal()
+    print(g)
+}
+```
+
+```{r}
+##LASSO
+#x = as.matrix(train.data[1:6]), y = as.matrix(train.data$charges)
+fitAndPlot (train.data1, train.label, alpha=1, lambda = c(0:5000)/1000)
+
+##Ridge Regularisation 
+fitAndPlot (train.data1, train.label, alpha=0, lambda = c(0:5000)/1000)
+```
+
+**Question 3 - Logistic Regression (45 marks) **
+
+**In this question, you are required to implement a Logistic Regression model to classify whether a person donated blood at a Blood Transfusion Service Center in March 2007. Please read the sub-questions below carefully for the deteailed instructions. **
+
+
+
+**1. Check out the Blood Transfusion Service Center Data Set at https://archive.ics.uci.edu/ml/datasets/Blood+Transfusion+Service+Center.**
+**2. Perform data preprocessing to determine and remove invalid samples. Split the data into a training set and a test set with a ratio of 7:3. (2 marks)**
+
+```{r}
+#read in transfusion data file 
+transfusion <- read.csv('transfusion.data')
+
+#perform data pre-processing 
+sum(is.na(transfusion)) #appears to be no missing values 
+
+summary(transfusion)
+
+##check for outliers 
+outliers.recency <- boxplot.stats(transfusion$Recency..months.)$out
+boxplot(transfusion$Recency..months., main = "Recency..months.", boxwex = 0.1)
+mtext(paste("Outliers: ", paste(outliers.recency, collapse = ", ")), cex = 0.6)
+
+outliers.freq <- boxplot.stats(transfusion$Frequency..times.)$out
+boxplot(transfusion$Frequency..times., main = "Frequency..times.", boxwex = 0.1)
+mtext(paste("Outliers: ", paste(outliers.freq, collapse = ", ")), cex = 0.6)
+
+outliers.monetary <- boxplot.stats(transfusion$Monetary..c.c..blood.)$out
+boxplot(transfusion$Monetary..c.c..blood., main = "Monetary..c.c..blood", boxwex = 0.1)
+mtext(paste("Outliers: ", paste(outliers.monetary, collapse = ", ")), cex = 0.6)
+
+outliers.time <- boxplot.stats(transfusion$Time..months.)$out
+boxplot(transfusion$Time..months., main = "Time..months.", boxwex = 0.1)
+mtext(paste("Outliers: ", paste(outliers.time, collapse = ", ")), cex = 0.6)
+
+#find which rows contain Recency outliers and remove rows
+transfusion[which(transfusion$Recency..months. %in% outliers.recency), ]
+transfusion <- transfusion[-which(transfusion$Recency..months. %in% outliers.recency), ]
+
+#find which rows contain Frequency outliers and remove rows
+transfusion[which(transfusion$Frequency..times. %in% outliers.freq), ]
+transfusion <- transfusion[-which(transfusion$Frequency..times. %in% outliers.freq), ]
+```
+```{r}
+ nor <-function(x) { (x -min(x))/(max(x)-min(x))   }
+ 
+ ##Run nomalization on first 4 coulumns of dataset because they are the predictors
+c0 <- '+1'; c1 <- '-1' 
+train1.len <- 487
+transfusion_norm <- as.data.frame(lapply(transfusion, nor))
+ran <- sample(1:nrow(transfusion), 0.7 * nrow(transfusion)) 
+train1.x <- transfusion[ran, -5]
+train1.y <- transfusion[ran, 5]
+test1.x <- transfusion[-ran, -5]
+test1.y <- transfusion[-ran, 5]
+```
+
+**3. Develop a Logistic Regression model that use batch gradient descent for optimization. Visualize the parameter updating process, test error (ACC) in each iteration, and the cost convergence process. Please note that you need to develop your model step-by-step, built-in models in any realeased R package, like glm, is not allowed to use in this question. (10 marks)**
+```{r}
+# auxiliary function that predicts class labels
+predict <- function(w, X, c0, c1){
+    sig <- sigmoid(w, X)
+    return(ifelse(sig>0.5, c1,c0))
+}
+    
+# auxiliary function that calculate a cost function
+cost <- function (w, X, T, c0){
+    sig <- sigmoid(w, X)
+    return(sum(ifelse(T==c0, 1-sig, sig)))
+}
+```
+
+
+```{r}
+# Sigmoid function (=p(C1|X))
+sigmoid <- function(w, x){
+    return(1.0/(1.0+exp(-w%*%t(cbind(1,x)))))    
+}
+```
+
+```{r}
+# Initializations
+tau.max <- 10000  # maximum number of iterations
+eta <- 0.01 # learning rate
+epsilon <- 10^-10 # a threshold on the cost (to terminate the process)
+tau <- 1 # iteration counter
+terminate <- FALSE
+
+## Just a few name/type conversion to make the rest of the code easy to follow
+X <- as.matrix(train1.x) # rename just for conviniance
+T <- ifelse(train1.y==c0,0,1) # rename just for conviniance
+
+W <- matrix(nrow=tau.max, ncol=(ncol(X)+1)) # to be used to store the estimated coefficients
+W[1,] <- runif(ncol(W)) # initial weight (any better idea?)
+
+# project data using the sigmoid function (just for convenient)
+Y <- sigmoid(W[1,],X)
+
+costs <- data.frame('tau'=1:tau.max)  # to be used to trace the cost in each iteration
+costs[1, 'cost'] <- cost(W[1,],X,T, c0)
+```
+
+
+```{r}
+while(!terminate){
+  #for each datapoint:
+  for (i in 1:train1.len){
+    # check termination criteria:
+    if (tau >= tau.max | cost(W[tau,],X,T, c0) <=epsilon) {terminate<-TRUE;break}
+        
+    Y <- sigmoid(W[tau,],X)
+            
+    # Update the weights
+    W[(tau+1),] <- W[tau,] - eta * (Y[i]-T[i]) * cbind(1, t(X[i,]))
+        
+    # record the cost:
+    costs[(tau+1), 'cost'] <- cost(W[tau,],X,T, c0)
+        
+    # update the counter:
+    tau <- tau + 1
+        
+    # decrease learning rate:
+    eta = eta * 0.999
+  }
+}
+# Done!
+costs <- costs[1:tau, ] # remove the NaN tail of the vector (in case of early stopping)
+
+# the  final result is:
+w <- W[tau,]
+cat('\nThe  final coefficents are:',w)
+```
+I'm not sure why, but my W table has all the same values, this has really limited what I can do in terms on visualisation and analysis but I will try to continue with the codeing and commenting on what you should see. 
+```{r}
+
+```
+
+
+
+**4. Invesitigate the influence of different learning rate to the training process and answer what happend if you apply a too small or a too large learning rate. (5 marks)**
+Given that my code has not worked properly I can only comment what could be seen if the learning rate was too small or too large. If the learning rate is too small than the model may not converge before the max iteration is reached or it may get stuck on a suboptimal solution. A learning rate that is too large may cause the gradient descent algorithm to inadvertently increase rather than decrease the training error and finish on suboptimal final weights. 
+
+
+
+**5. Expermently compare batch gradient descent and stochastic gradient descent and discuss your findings (e.g., convergence speed). Visualize the comparison in terms of updating process and the cost convergence process. (6 marks)**
+```{r}
+# Initializations
+tau1.max <- 1000 # maximum number of iterations
+eta1 <- 0.01 # learning rate
+epsilon1 <- 10^-10# a threshold on the cost (to terminate the process)
+tau1 <- 1 # iteration counter
+terminate1 <- FALSE
+
+## Just a few name/type conversion to make the rest of the code easy to follow
+X1 <- as.matrix(train1.x) # rename just for conviniance
+T1 <- ifelse(train1.y==c0,0,1) # rename just for conviniance
+
+W1 <- matrix(nrow=tau1.max, ncol=(ncol(X)+1)) # to be used to store the estimated coefficients
+W1[1,] <- runif(ncol(W)) # initial weight (any better idea?)
+
+# project data using the sigmoid function (just for convenient)
+Y1 <- sigmoid(W[1,],X)
+
+costs1 <- data.frame('tau'=1:tau.max)  # to be used to trace the cost in each iteration
+costs1[1, 'cost'] <- cost(W[1,],X,T, c0)
+
+while(!terminate1){
+    # check termination criteria:
+    terminate1 <- tau1 >= tau1.max | cost(W1[tau1,],X1,T1, c0)<=epsilon1
+    
+    # shuffle data:
+    train.index <- sample(1:train1.len, train1.len, replace = FALSE)
+    X1 <- X1[train.index,]
+    T1 <- T1[train.index]
+    
+    # for each datapoint:
+    for (i in 1:train1.len){
+        # check termination criteria:
+        if (tau1 >= tau1.max | cost(W1[tau1,],X1,T1, c0) <=epsilon1) {terminate1<-TRUE;break}
+        
+        Y1 <- sigmoid(W1[tau1,],X1)
+            
+        # Update the weights
+        W1[(tau1+1),] <- W1[tau1,] - eta1 * (Y1[i]-T1[i]) * cbind(1, t(X1[i,]))
+        
+        # record the cost:
+        costs1[(tau1+1), 'cost'] <- cost(W1[tau1,],X1,T1, c0)
+        
+        # update the counter:
+        tau1 <- tau1 + 1
+        
+        # decrease learning rate:
+        eta1 = eta1 * 0.999
+    }
+}
+# Done!
+costs1 <- costs1[1:tau1, ] # remove the NaN tail of the vector (in case of early stopping)
+
+# the  final result is:
+w1 <- W1[tau1,]
+cat('\nThe  final coefficents are:',w1)
+```
+I have the same issue as before, so it makes it difficult to comment on cost convergence speed and the like. 
+
+**6. Develop a K-fold (K = 5) cross validation to evaluate your model in step 3. Please note that you need to write R codes to explicitly show  how you perform the K-fold cross validation. Built-in validation methods are not allowed to use. Different metrics, e.g. ACC, Recall, precision, etc, should be used to evaluate your model. (8 marks)**
+```{r}
+
+```
+**7. Use different values of K (from 5 to N, where N denotes the sample number) and summarize the corresponding changes of your model performances. Visualize and explain the changes. (6 marks)**
+
+**8. How can you modify the cost function to prevent overfitting? Discuss the possibility of adding regularization term(s) and summarize the possible changes in the gradient descent process. (8 marks)**
+Regularization is used to reduce the complexity of a model. It does this by adding a penalty term to the loss function. Using L1 regularisation aims to add a pentalty that minimises the absolute value of the weights. L2 regularisation aims to minimise the squared magnitude of the weigths. regularisation changes the direction the algorithm descends towards 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
